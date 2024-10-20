@@ -46,8 +46,9 @@ export const GetStartedForm = () => {
     })
     addMessage({
       id: 0,
-      text: `Hello ${data.name}, I am Brad Pitt, how are you going?`,
+      content: `Hello ${data.name}, I am Brad Pitt, how are you going?`,
       sender: 'bot',
+      type: 'text',
       avatar: 'https://upload.wikimedia.org/wikipedia/commons/1/13/Brad_Pitt_Cannes.jpg'
     })
     router.push("/chat")

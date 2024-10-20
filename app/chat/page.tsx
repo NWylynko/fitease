@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from 'react'
-import { Send } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Loader2Icon, Send } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -18,15 +18,8 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
-import { useStoreAddMessage, useStoreMessages } from '../store'
-import { submitMessage } from './actions'
-
-interface Message {
-  id: number
-  text: string
-  sender: 'user' | 'bot'
-  avatar: string
-}
+import { useStoreAddMessage, useStoreMessages, useStoreUpdateVideoGenToVideo, useStoreUpdateTextGenToText } from '../store'
+import { getTextStatus, getVideoStatus, startVideoGen, submitMessage } from './actions'
 
 const FormSchema = z.object({
   message: z.string(),
@@ -35,6 +28,8 @@ const FormSchema = z.object({
 export default function Component() {
   const messages = useStoreMessages()
   const addMessage = useStoreAddMessage();
+  const updateVideoGenToVideo = useStoreUpdateVideoGenToVideo();
+  const updateTextGenToText = useStoreUpdateTextGenToText();
 
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
@@ -45,27 +40,90 @@ export default function Component() {
 
   const handleSubmit = form.handleSubmit(async (data) => {
     if (data.message.trim() !== '') {
-      const userMessage: Message = {
+      addMessage({
         id: messages.length + 1,
-        text: data.message,
+        content: data.message,
         sender: 'user',
+        type: 'text',
         avatar: 'https://discoverymood.com/wp-content/uploads/2020/04/Mental-Strong-Women-min-480x340.jpg'
-      }
-      addMessage(userMessage)
+      })
       form.reset()
 
       const response = await submitMessage(data.message)
 
       addMessage({
         id: messages.length + 2,
-        text: response.text,
+        content: response.requestId,
         sender: 'bot',
+        type: 'text-gen',
         avatar: 'https://upload.wikimedia.org/wikipedia/commons/1/13/Brad_Pitt_Cannes.jpg'
       })
 
+      // const new_video_gen = await startVideoGen(response.text)
+
+      // addMessage({
+      //   id: messages.length + 3,
+      //   content: new_video_gen.videoId,
+      //   sender: 'bot',
+      //   type: 'video-gen',
+      //   avatar: 'https://upload.wikimedia.org/wikipedia/commons/1/13/Brad_Pitt_Cannes.jpg'
+      // })
 
     }
   })
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      console.log("messages", messages)
+
+      const genTextMessages = messages.filter((message) => message.type === 'text-gen')
+
+      console.log(genTextMessages)
+
+      for await (const message of genTextMessages) {
+        const video = await getTextStatus(message.content)
+
+        if (video.completed === true) {
+          updateTextGenToText(message.id, video.data)
+
+          const new_video_gen = await startVideoGen(video.data)
+
+          addMessage({
+            id: messages.length + 3,
+            content: new_video_gen.videoId,
+            sender: 'bot',
+            type: 'video-gen',
+            avatar: 'https://upload.wikimedia.org/wikipedia/commons/1/13/Brad_Pitt_Cannes.jpg'
+          })
+
+        }
+      }
+    }, 5 * 1000)
+
+    return () => clearInterval(interval)
+  }, [messages])
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      console.log("messages", messages)
+
+      const genVideoMessages = messages.filter((message) => message.type === 'video-gen')
+
+      console.log(genVideoMessages)
+
+      for await (const message of genVideoMessages) {
+        const video = await getVideoStatus(message.content)
+
+        if (video.status === 'completed') {
+          updateVideoGenToVideo(message.id, video.videoUrl)
+        }
+      }
+    }, 5 * 1000)
+
+    return () => clearInterval(interval)
+  }, [messages])
+
+
 
   return (
     <div className="flex flex-col min-h-[85svh] w-full mx-auto overflow-hidden bg-background">
@@ -81,14 +139,32 @@ export default function Component() {
                 <AvatarImage src={message.avatar} alt={`${message.sender} avatar`} className="object-cover" />
                 <AvatarFallback>{message.sender[0].toUpperCase()}</AvatarFallback>
               </Avatar>
-              <div
+              {message.type === 'text' ? <div
                 className={`max-w-[70%] rounded-lg p-3 ${message.sender === 'user'
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted'
                   }`}
               >
-                {message.text}
-              </div>
+                {message.content}
+              </div> : null}
+              {message.type === 'text-gen' ? <div className={`max-w-[70%] rounded-lg p-3 ${message.sender === 'user'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted'
+                }`}>
+                <span className="flex flex-row gap-2 items-center">Generating Response <Loader2Icon className="size-4 animate-spin" /></span>
+              </div> : null}
+              {message.type === 'video-gen' ? <div className={`max-w-[70%] rounded-lg p-3 ${message.sender === 'user'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted'
+                }`}>
+                <span className="flex flex-row gap-2 items-center">Generating Video <Loader2Icon className="size-4 animate-spin" /></span>
+              </div> : null}
+              {message.type === 'video' ? <div className={`max-w-[70%] rounded-lg p-3 ${message.sender === 'user'
+                ? 'bg-primary text-primary-foreground'
+                : 'bg-muted'
+                }`}>
+                <video src={message.content} controls className="w-full h-auto" />
+              </div> : null}
             </div>
           ))}
         </div>
